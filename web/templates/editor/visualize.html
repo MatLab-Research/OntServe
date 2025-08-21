@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }} - OntServe</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        .visualization-container {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            min-height: 600px;
+        }
+
+        .entity-details-card {
+            position: sticky;
+            top: 20px;
+        }
+
+        /* Ontology hierarchy styles */
+        .link {
+            fill: none;
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 2px;
+        }
+
+        .node circle {
+            cursor: pointer;
+            stroke: #fff;
+            stroke-width: 2px;
+        }
+
+        .node text {
+            font: 12px sans-serif;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* Entity type colors */
+        .node.bfo circle {
+            fill: #4A90E2;
+        }
+
+        .node.bfo-aligned circle {
+            fill: #7ED321;
+        }
+
+        .node.prov circle {
+            fill: #F5A623;
+        }
+
+        .node.custom circle {
+            fill: #BD10E0;
+        }
+
+        .node.external circle {
+            fill: #9013FE;
+        }
+
+        /* Entity type specific colors */
+        .entity-class {
+            color: #4A90E2;
+        }
+
+        .entity-property {
+            color: #F5A623;
+        }
+
+        .entity-individual {
+            color: #7ED321;
+        }
+
+        .entity-role {
+            color: #9013FE;
+        }
+
+        .entity-condition {
+            color: #FF6B6B;
+        }
+
+        .entity-resource {
+            color: #4ECDC4;
+        }
+
+        .entity-action {
+            color: #FFD93D;
+        }
+
+        .entity-event {
+            color: #FF9500;
+        }
+
+        .entity-capability {
+            color: #00C9FF;
+        }
+
+        .entity-header {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .entity-uri {
+            font-size: 0.8em;
+            color: #6c757d;
+            font-family: monospace;
+            word-break: break-all;
+            margin-bottom: 1rem;
+        }
+
+        .entity-property {
+            margin-bottom: 0.75rem;
+        }
+
+        .entity-property-name {
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .entity-property-value {
+            margin-top: 0.25rem;
+            color: #6c757d;
+        }
+
+        .toolbar {
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            padding: 1rem 0;
+        }
+
+        .controls-panel {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .semantic-search-results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .search-result-item {
+            border: 1px solid #e9ecef;
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .search-result-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .similarity-score {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/editor">
+                <i class="fas fa-project-diagram me-2"></i>
+                OntServe Editor
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/editor">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Editor
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="toolbar">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-project-diagram me-2"></i>
+                        {{ ontology.name }}
+                    </h1>
+                    <small class="text-muted">Ontology Visualization with Semantic Search</small>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex justify-content-end gap-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="expandAllNodes()">
+                            <i class="fas fa-expand-arrows-alt me-1"></i>Expand All
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="collapseAllNodes()">
+                            <i class="fas fa-compress-arrows-alt me-1"></i>Collapse All
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" onclick="exportVisualization()">
+                            <i class="fas fa-download me-1"></i>Export
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <!-- Controls Panel -->
+            <div class="col-md-3">
+                <div class="controls-panel">
+                    <h6><i class="fas fa-filter me-2"></i>Visualization Controls</h6>
+
+                    <div class="mb-3">
+                        <label class="form-label">Entity Type</label>
+                        <select class="form-select form-select-sm" id="filterType">
+                            <option value="all">All Types</option>
+                            <option value="class" selected>Classes</option>
+                            <option value="property">Properties</option>
+                            <option value="individual">Individuals</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Search Entities</label>
+                        <input type="text" class="form-control form-control-sm" id="searchBox"
+                            placeholder="Enter search term...">
+                        <button class="btn btn-primary btn-sm mt-2 w-100" onclick="performSemanticSearch()">
+                            <i class="fas fa-search me-1"></i>Semantic Search
+                        </button>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="showBFOClasses" checked>
+                        <label class="form-check-label" for="showBFOClasses">
+                            Show BFO Classes
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="highlightBFOAligned" checked>
+                        <label class="form-check-label" for="highlightBFOAligned">
+                            Highlight BFO-Aligned
+                        </label>
+                    </div>
+
+                    <button class="btn btn-outline-primary btn-sm w-100" onclick="applyFilters()">
+                        <i class="fas fa-filter me-1"></i>Apply Filters
+                    </button>
+                </div>
+
+                <!-- Semantic Search Results -->
+                <div class="controls-panel" id="searchResultsPanel" style="display: none;">
+                    <h6><i class="fas fa-search me-2"></i>Search Results</h6>
+                    <div id="searchResults" class="semantic-search-results">
+                        <!-- Search results will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Statistics Panel -->
+                <div class="controls-panel">
+                    <h6><i class="fas fa-chart-bar me-2"></i>Statistics</h6>
+                    <div id="hierarchyStats">
+                        <div class="d-flex justify-content-between">
+                            <small>Total Entities:</small>
+                            <strong id="totalEntities">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <small>Max Depth:</small>
+                            <strong id="maxDepth">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <small>Classes:</small>
+                            <strong id="classCount">-</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <small>Properties:</small>
+                            <strong id="propertyCount">-</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visualization Area -->
+            <div class="col-md-6">
+                <div class="visualization-container" id="hierarchyTree">
+                    <div id="loadingIndicator" class="d-flex justify-content-center align-items-center h-100">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <div class="mt-2">Loading ontology hierarchy...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Entity Details Panel -->
+            <div class="col-md-3">
+                <div class="card entity-details-card" id="entityDetailsCard" style="display: none;">
+                    <div class="card-header">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-info-circle me-2"></i>Entity Details
+                        </h6>
+                    </div>
+                    <div class="card-body" id="entityDetails">
+                        <!-- Entity details will be populated here -->
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-sm btn-outline-primary w-100" id="findSimilarBtn"
+                            onclick="findSimilarEntities()" style="display: none;">
+                            <i class="fas fa-search me-1"></i>Find Similar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let hierarchyData;
+        let currentEntityData;
+        let tree;
+        let svg;
+        let g;
+        const ontologyId = "{{ ontology_id }}";
+
+        // Initialize visualization on load
+        document.addEventListener('DOMContentLoaded', function () {
+            setupEventListeners();
+            loadOntologyData();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('filterType').addEventListener('change', applyFilters);
+            document.getElementById('showBFOClasses').addEventListener('change', applyFilters);
+            document.getElementById('highlightBFOAligned').addEventListener('change', applyFilters);
+
+            document.getElementById('searchBox').addEventListener('keyup', function (e) {
+                if (e.key === 'Enter') {
+                    performSemanticSearch();
+                }
+            });
+        }
+
+        function loadOntologyData() {
+            const entityType = document.getElementById('filterType').value;
+            const url = `/editor/ontology/${ontologyId}/hierarchy?type=${entityType}`;
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to load ontology hierarchy');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        hierarchyData = data.hierarchy;
+                        visualizeHierarchy(hierarchyData);
+                        updateStatistics(data.stats);
+
+                        // Hide loading indicator
+                        document.getElementById('loadingIndicator').style.display = 'none';
+                    } else {
+                        throw new Error(data.error || 'Unknown error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading ontology hierarchy:', error);
+                    document.getElementById('loadingIndicator').innerHTML = `
+                        <div class="alert alert-danger">
+                            Error loading ontology hierarchy: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+
+        function visualizeHierarchy(data) {
+            // Clear previous visualization
+            document.getElementById('hierarchyTree').innerHTML = '';
+
+            // Set dimensions
+            const container = document.getElementById('hierarchyTree');
+            const width = container.clientWidth;
+            const height = 600;
+            const margin = { top: 20, right: 120, bottom: 20, left: 120 };
+
+            // Create SVG
+            svg = d3.select('#hierarchyTree')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            g = svg.append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Create tree layout
+            tree = d3.tree()
+                .size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
+
+            // Create hierarchy
+            const root = d3.hierarchy(data);
+            tree(root);
+
+            // Add links
+            const links = g.selectAll('.link')
+                .data(root.links())
+                .enter()
+                .append('path')
+                .attr('class', 'link')
+                .attr('d', d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x));
+
+            // Add nodes
+            const nodes = g.selectAll('.node')
+                .data(root.descendants())
+                .enter()
+                .append('g')
+                .attr('class', d => {
+                    let classes = 'node';
+                    if (d.data.type) {
+                        classes += ` ${d.data.type}`;
+                    }
+                    if (d.children) {
+                        classes += ' node--internal';
+                    } else {
+                        classes += ' node--leaf';
+                    }
+                    return classes;
+                })
+                .attr('transform', d => `translate(${d.y},${d.x})`)
+                .on('click', toggleNode);
+
+            // Add circles
+            nodes.append('circle')
+                .attr('r', 6);
+
+            // Add labels
+            nodes.append('text')
+                .attr('dy', 3)
+                .attr('x', d => d.children ? -8 : 8)
+                .style('text-anchor', d => d.children ? 'end' : 'start')
+                .text(d => d.data.name);
+
+            // Initially collapse deep nodes
+            root.descendants().forEach(d => {
+                if (d.depth >= 3) {
+                    toggleChildren(d);
+                }
+            });
+
+            update(root);
+        }
+
+        function toggleNode(event, d) {
+            if (d.children || d._children) {
+                toggleChildren(d);
+                update(d3.hierarchy(hierarchyData));
+            }
+
+            showEntityDetails(d.data);
+            event.stopPropagation();
+        }
+
+        function toggleChildren(d) {
+            if (d.children) {
+                d._children = d.children;
+                d.children = null;
+            } else {
+                d.children = d._children;
+                d._children = null;
+            }
+        }
+
+        function expandAllNodes() {
+            expandCollapseAll(d3.hierarchy(hierarchyData), true);
+            update(d3.hierarchy(hierarchyData));
+        }
+
+        function collapseAllNodes() {
+            expandCollapseAll(d3.hierarchy(hierarchyData), false);
+            update(d3.hierarchy(hierarchyData));
+        }
+
+        function expandCollapseAll(d, expand) {
+            if (d.children || d._children) {
+                if (expand) {
+                    if (d._children) {
+                        d.children = d._children;
+                        d._children = null;
+                    }
+                    if (d.children) {
+                        d.children.forEach(child => expandCollapseAll(child, expand));
+                    }
+                } else {
+                    if (d.children) {
+                        d.children.forEach(child => expandCollapseAll(child, expand));
+                    }
+                    if (d.depth > 0) {
+                        d._children = d.children;
+                        d.children = null;
+                    }
+                }
+            }
+        }
+
+        function update(source) {
+            tree(source);
+
+            const nodes = g.selectAll('.node');
+            nodes.attr('transform', d => `translate(${d.y},${d.x})`);
+
+            g.selectAll('.link')
+                .attr('d', d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x));
+        }
+
+        function showEntityDetails(entityData) {
+            currentEntityData = entityData;
+            const detailsElement = document.getElementById('entityDetails');
+            const detailsCard = document.getElementById('entityDetailsCard');
+            const findSimilarBtn = document.getElementById('findSimilarBtn');
+
+            if (!entityData || entityData.type === 'root') {
+                detailsCard.style.display = 'none';
+                return;
+            }
+
+            let html = `<div class="entity-header">${entityData.name}</div>`;
+
+            if (entityData.uri) {
+                html += `<div class="entity-uri">${entityData.uri}</div>`;
+            }
+
+            if (entityData.description) {
+                html += `
+                    <div class="entity-property">
+                        <span class="entity-property-name">Description:</span>
+                        <div class="entity-property-value">${entityData.description}</div>
+                    </div>
+                `;
+            }
+
+            if (entityData.entity_type) {
+                html += `
+                    <div class="entity-property">
+                        <span class="entity-property-name">Type:</span>
+                        <div class="entity-property-value">
+                            <span class="badge bg-secondary entity-${entityData.entity_type}">
+                                ${entityData.entity_type}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (entityData.properties && Object.keys(entityData.properties).length > 0) {
+                html += `
+                    <div class="entity-property">
+                        <span class="entity-property-name">Properties:</span>
+                        <div class="entity-property-value">
+                            <ul class="list-unstyled">
+                `;
+
+                for (const [key, value] of Object.entries(entityData.properties)) {
+                    html += `<li><strong>${key}:</strong> ${Array.isArray(value) ? value.join(', ') : value}</li>`;
+                }
+
+                html += `
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            detailsElement.innerHTML = html;
+            detailsCard.style.display = 'block';
+            findSimilarBtn.style.display = entityData.uri ? 'block' : 'none';
+        }
+
+        function performSemanticSearch() {
+            const query = document.getElementById('searchBox').value.trim();
+            if (!query) {
+                alert('Please enter a search term');
+                return;
+            }
+
+            const url = `/editor/api/entities/search?query=${encodeURIComponent(query)}&ontology_id=${ontologyId}&limit=10`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displaySearchResults(data.results, query);
+                    } else {
+                        alert('Search failed: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Search error:', error);
+                    alert('Search failed: ' + error.message);
+                });
+        }
+
+        function displaySearchResults(results, query) {
+            const resultsPanel = document.getElementById('searchResultsPanel');
+            const resultsContainer = document.getElementById('searchResults');
+
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<div class="text-muted">No results found</div>';
+            } else {
+                let html = '';
+                results.forEach(result => {
+                    html += `
+                        <div class="search-result-item" onclick="highlightEntity('${result.uri}')">
+                            <div class="fw-bold">${result.label || 'Unnamed'}</div>
+                            <div class="small text-muted">${result.entity_type}</div>
+                            ${result.comment ? `<div class="small">${result.comment.substring(0, 100)}...</div>` : ''}
+                            <div class="similarity-score">Similarity: ${(result.similarity_score * 100).toFixed(1)}%</div>
+                        </div>
+                    `;
+                });
+                resultsContainer.innerHTML = html;
+            }
+
+            resultsPanel.style.display = 'block';
+        }
+
+        function highlightEntity(uri) {
+            // Find and highlight entity in visualization
+            g.selectAll('.node').each(function (d) {
+                if (d.data.uri === uri) {
+                    d3.select(this).select('circle')
+                        .transition()
+                        .duration(500)
+                        .attr('r', 12)
+                        .style('stroke', '#ff0000')
+                        .style('stroke-width', '3px')
+                        .transition()
+                        .duration(500)
+                        .attr('r', 6)
+                        .style('stroke', '#fff')
+                        .style('stroke-width', '2px');
+
+                    showEntityDetails(d.data);
+                }
+            });
+        }
+
+        function findSimilarEntities() {
+            if (!currentEntityData || !currentEntityData.uri) {
+                return;
+            }
+
+            const searchQuery = currentEntityData.name || currentEntityData.uri;
+            document.getElementById('searchBox').value = searchQuery;
+            performSemanticSearch();
+        }
+
+        function applyFilters() {
+            const filterType = document.getElementById('filterType').value;
+            const showBFO = document.getElementById('showBFOClasses').checked;
+            const highlightBFOAligned = document.getElementById('highlightBFOAligned').checked;
+
+            // Reload hierarchy with new filter
+            if (filterType !== 'all') {
+                loadOntologyData();
+                return;
+            }
+
+            // Apply visual filters
+            g.selectAll('.node').style('display', function () {
+                const d = d3.select(this).datum();
+
+                if (!showBFO && d.data.type === 'bfo') {
+                    return 'none';
+                }
+
+                return null;
+            });
+
+            // Apply highlight
+            if (highlightBFOAligned) {
+                g.selectAll('.node circle').attr('r', function () {
+                    const d = d3.select(this.parentNode).datum();
+                    if (d.data.type === 'bfo' || d.data.type === 'bfo-aligned') {
+                        return 8;
+                    }
+                    return 6;
+                });
+            } else {
+                g.selectAll('.node circle').attr('r', 6);
+            }
+        }
+
+        function updateStatistics(stats) {
+            if (stats) {
+                document.getElementById('totalEntities').textContent = stats.total_entities || 0;
+                document.getElementById('maxDepth').textContent = stats.max_depth || 0;
+                document.getElementById('classCount').textContent = stats.entity_type_counts?.class || 0;
+                document.getElementById('propertyCount').textContent = stats.entity_type_counts?.property || 0;
+            }
+        }
+
+        function exportVisualization() {
+            // Implementation for exporting visualization
+            console.log('Export functionality to be implemented');
+        }
+    </script>
+</body>
+
+</html>

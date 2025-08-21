@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Import Ontology - OntServe{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <h1 class="mb-4">
+            <i class="bi bi-cloud-upload"></i> Import Ontology
+        </h1>
+        
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('import_ontology') }}">
+                    <div class="mb-3">
+                        <label for="source_type" class="form-label">Source Type</label>
+                        <select class="form-select" id="source_type" name="source_type" onchange="toggleSourceInput()">
+                            <option value="url">URL</option>
+                            <option value="file">File Path</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="source" class="form-label">Source</label>
+                        <input type="text" class="form-control" id="source" name="source" 
+                               placeholder="https://example.com/ontology.ttl" required>
+                        <div class="form-text">
+                            Enter the URL or file path to the ontology (TTL, RDF, OWL formats supported)
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               placeholder="My Ontology" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" 
+                                  rows="3" placeholder="Brief description of the ontology..."></textarea>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-cloud-upload"></i> Import Ontology
+                        </button>
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Quick import suggestions -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Import Suggestions</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <a href="#" class="list-group-item list-group-item-action" 
+                       onclick="fillForm('https://www.w3.org/ns/prov.ttl', 'W3C PROV-O', 'The PROV Ontology provides classes, properties, and restrictions for representing provenance information')">
+                        <h6 class="mb-1">PROV-O (W3C Provenance Ontology)</h6>
+                        <small>Standard for representing provenance information</small>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action"
+                       onclick="fillForm('OntExtract/ontologies/bfo.ttl', 'Basic Formal Ontology', 'BFO is a top-level ontology designed for use in supporting information retrieval, analysis and integration in scientific and other domains', 'file')">
+                        <h6 class="mb-1">BFO (Basic Formal Ontology)</h6>
+                        <small>Top-level ontology for scientific domains</small>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleSourceInput() {
+    const sourceType = document.getElementById('source_type').value;
+    const sourceInput = document.getElementById('source');
+    
+    if (sourceType === 'url') {
+        sourceInput.placeholder = 'https://example.com/ontology.ttl';
+    } else {
+        sourceInput.placeholder = '/path/to/ontology.ttl';
+    }
+}
+
+function fillForm(source, name, description, type='url') {
+    document.getElementById('source_type').value = type;
+    document.getElementById('source').value = source;
+    document.getElementById('name').value = name;
+    document.getElementById('description').value = description;
+    toggleSourceInput();
+}
+</script>
+{% endblock %}

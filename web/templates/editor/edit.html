@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }} - OntServe</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <!-- ACE Editor - Same as ProEthica -->
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.22.0/src-min-noconflict/ace.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.22.0/src-min-noconflict/ext-language_tools.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.22.0/src-min-noconflict/mode-turtle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.22.0/src-min-noconflict/theme-monokai.js"></script>
+
+    <style>
+        .editor-container {
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+
+        .toolbar {
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            padding: 1rem 0;
+        }
+
+        .validation-panel {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .version-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .version-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .version-item.active {
+            background-color: #e7f3ff;
+            border-left: 4px solid #0d6efd;
+        }
+
+        .commit-message {
+            font-size: 0.9em;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .entity-count {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+
+        .ace-monokai {
+            font-size: 14px !important;
+        }
+    </style>
+</head>
+
+<body data-ontology-id="{{ ontology.ontology_id }}">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/editor">
+                <i class="fas fa-project-diagram me-2"></i>
+                OntServe Editor
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/editor">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Editor
+                </a>
+                <a class="nav-link" href="/editor/ontology/{{ ontology.ontology_id }}/visualize">
+                    <i class="fas fa-project-diagram me-1"></i>Visualize
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="toolbar">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-edit me-2"></i>
+                        {{ ontology.name }}
+                    </h1>
+                    <small class="text-muted">TTL Ontology Editor with Syntax Highlighting</small>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex justify-content-end gap-2">
+                        <button class="btn btn-outline-info btn-sm" id="validateBtn">
+                            <i class="fas fa-check-circle me-1"></i>Validate
+                        </button>
+                        <button class="btn btn-success btn-sm" id="saveBtn">
+                            <i class="fas fa-save me-1"></i>Save
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" id="downloadBtn">
+                            <i class="fas fa-download me-1"></i>Download TTL
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <!-- Sidebar with Versions -->
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-history me-2"></i>Version History
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="versionList" style="max-height: 400px; overflow-y: auto;">
+                            {% if ontology.versions %}
+                            {% for version in ontology.versions %}
+                            <div class="version-item p-3 border-bottom {% if loop.first %}active{% endif %}"
+                                data-version="{{ version.version }}" onclick="loadVersion('{{ version.version }}')">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>{{ version.version }}</strong>
+                                        <div class="small text-muted">{{ version.created_at }}</div>
+                                        {% if version.commit_message %}
+                                        <div class="commit-message mt-1">{{ version.commit_message }}</div>
+                                        {% endif %}
+                                    </div>
+                                    <span class="badge bg-secondary">
+                                        {% if version.triple_count %}{{ version.triple_count }} triples{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            {% else %}
+                            <div class="p-3 text-center text-muted">
+                                No versions yet
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ontology Stats -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>Statistics
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col">
+                                <strong id="classCount">{{ ontology.class_count or 0 }}</strong><br>
+                                <small>Classes</small>
+                            </div>
+                            <div class="col">
+                                <strong id="propertyCount">{{ ontology.property_count or 0 }}</strong><br>
+                                <small>Properties</small>
+                            </div>
+                            <div class="col">
+                                <strong id="tripleCount">{{ ontology.triple_count or 0 }}</strong><br>
+                                <small>Triples</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-tools me-2"></i>Quick Actions
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-outline-primary btn-sm w-100 mb-2" onclick="extractEntities()">
+                            <i class="fas fa-sync me-1"></i>Extract Entities
+                        </button>
+                        <button class="btn btn-outline-success btn-sm w-100 mb-2" onclick="formatTTL()">
+                            <i class="fas fa-magic me-1"></i>Format TTL
+                        </button>
+                        <button class="btn btn-outline-info btn-sm w-100" onclick="showKeyboardShortcuts()">
+                            <i class="fas fa-keyboard me-1"></i>Shortcuts
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Editor -->
+            <div class="col-md-9">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-code me-2"></i>TTL Content
+                        </h6>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-secondary" onclick="findReplace()">
+                                <i class="fas fa-search me-1"></i>Find & Replace
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggleWordWrap()">
+                                <i class="fas fa-align-left me-1"></i>Word Wrap
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggleTheme()">
+                                <i class="fas fa-moon me-1"></i>Theme
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="editor-container">
+                            <div id="aceEditor" style="height: 600px; width: 100%;">{{ content }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation Results Panel -->
+                <div class="card mt-3" id="validationCard" style="display: none;">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-check-circle me-2"></i>Validation Results
+                        </h6>
+                        <button type="button" class="btn-close btn-close-white" onclick="hideValidation()"></button>
+                    </div>
+                    <div class="card-body validation-panel" id="validationResults">
+                        <!-- Validation results will appear here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Version Modal -->
+    <div class="modal fade" id="saveVersionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Save New Version</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="saveVersionForm">
+                        <div class="mb-3">
+                            <label for="commitMessage" class="form-label">Commit Message</label>
+                            <textarea class="form-control" id="commitMessage" rows="3"
+                                placeholder="Describe the changes made in this version" required></textarea>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="extractEntitiesCheck" checked>
+                            <label class="form-check-label" for="extractEntitiesCheck">
+                                Extract entities after saving
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmSaveBtn">Save Version</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="modal fade" id="shortcutsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Keyboard Shortcuts</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Editor</h6>
+                            <ul class="list-unstyled">
+                                <li><kbd>Ctrl+S</kbd> Save</li>
+                                <li><kbd>Ctrl+F</kbd> Find</li>
+                                <li><kbd>Ctrl+H</kbd> Replace</li>
+                                <li><kbd>Ctrl+/</kbd> Toggle Comment</li>
+                                <li><kbd>Ctrl+D</kbd> Duplicate Line</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Navigation</h6>
+                            <ul class="list-unstyled">
+                                <li><kbd>Ctrl+G</kbd> Go to Line</li>
+                                <li><kbd>Ctrl+L</kbd> Select Line</li>
+                                <li><kbd>Ctrl+A</kbd> Select All</li>
+                                <li><kbd>Tab</kbd> Indent</li>
+                                <li><kbd>Shift+Tab</kbd> Unindent</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let aceEditor;
+        let currentOntologyId = "{{ ontology.ontology_id }}";
+        let currentVersion = "{{ ontology.latest_version or 'latest' }}";
+        let hasUnsavedChanges = false;
+
+        // Initialize ACE Editor
+        document.addEventListener('DOMContentLoaded', function () {
+            initializeAceEditor();
+            setupEventListeners();
+            loadInitialContent();
+        });
+
+        function initializeAceEditor() {
+            aceEditor = ace.edit("aceEditor");
+
+            // Set theme and language mode (same as ProEthica)
+            aceEditor.setTheme("ace/theme/monokai");
+            aceEditor.session.setMode("ace/mode/turtle");
+
+            // Enable language tools
+            ace.require("ace/ext/language_tools");
+            aceEditor.setOptions({
+                enableBasicAutocompletion: true,
+                enableSnippets: true,
+                enableLiveAutocompletion: true,
+                fontSize: 14,
+                showPrintMargin: false,
+                wrap: false
+            });
+
+            // Track changes
+            aceEditor.session.on('change', function () {
+                hasUnsavedChanges = true;
+                updateSaveButtonState();
+            });
+
+            // Keyboard shortcuts
+            aceEditor.commands.addCommand({
+                name: 'save',
+                bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+                exec: function (editor) {
+                    saveOntology();
+                }
+            });
+
+            aceEditor.commands.addCommand({
+                name: 'validate',
+                bindKey: { win: 'Ctrl-Shift-V', mac: 'Command-Shift-V' },
+                exec: function (editor) {
+                    validateOntology();
+                }
+            });
+        }
+
+        function setupEventListeners() {
+            document.getElementById('saveBtn').addEventListener('click', saveOntology);
+            document.getElementById('validateBtn').addEventListener('click', validateOntology);
+            document.getElementById('downloadBtn').addEventListener('click', downloadTTL);
+            document.getElementById('confirmSaveBtn').addEventListener('click', confirmSave);
+
+            // Warn before leaving with unsaved changes
+            window.addEventListener('beforeunload', function (e) {
+                if (hasUnsavedChanges) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            });
+        }
+
+        function loadInitialContent() {
+            // Content is already loaded in the template
+            hasUnsavedChanges = false;
+            updateSaveButtonState();
+        }
+
+        function loadVersion(version) {
+            if (hasUnsavedChanges && !confirm('You have unsaved changes. Load this version anyway?')) {
+                return;
+            }
+
+            // Update active version in UI
+            document.querySelectorAll('.version-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-version="${version}"]`).classList.add('active');
+
+            // Load version content
+            fetch(`/editor/ontology/${currentOntologyId}/version/${version}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        aceEditor.setValue(data.content, -1);
+                        currentVersion = version;
+                        hasUnsavedChanges = false;
+                        updateSaveButtonState();
+                    } else {
+                        alert('Error loading version: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading version:', error);
+                    alert('Error loading version: ' + error.message);
+                });
+        }
+
+        function validateOntology() {
+            const content = aceEditor.getValue();
+
+            document.getElementById('validateBtn').disabled = true;
+            document.getElementById('validateBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Validating...';
+
+            fetch(`/editor/ontology/${currentOntologyId}/validate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: content })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    showValidationResults(data.validation);
+                })
+                .catch(error => {
+                    console.error('Validation error:', error);
+                    alert('Validation failed: ' + error.message);
+                })
+                .finally(() => {
+                    document.getElementById('validateBtn').disabled = false;
+                    document.getElementById('validateBtn').innerHTML = '<i class="fas fa-check-circle me-1"></i>Validate';
+                });
+        }
+
+        function showValidationResults(validation) {
+            const card = document.getElementById('validationCard');
+            const results = document.getElementById('validationResults');
+
+            let html = '';
+
+            if (validation.valid) {
+                html = '<div class="alert alert-success"><i class="fas fa-check-circle me-2"></i>Ontology is valid!</div>';
+            } else {
+                html = '<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>Validation failed</div>';
+            }
+
+            if (validation.errors && validation.errors.length > 0) {
+                html += '<h6 class="text-danger">Errors:</h6><ul class="list-unstyled">';
+                validation.errors.forEach(error => {
+                    html += `<li class="text-danger"><i class="fas fa-times me-1"></i>${error}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            if (validation.warnings && validation.warnings.length > 0) {
+                html += '<h6 class="text-warning">Warnings:</h6><ul class="list-unstyled">';
+                validation.warnings.forEach(warning => {
+                    html += `<li class="text-warning"><i class="fas fa-exclamation-triangle me-1"></i>${warning}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            results.innerHTML = html;
+            card.style.display = 'block';
+
+            // Scroll to validation results
+            card.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function hideValidation() {
+            document.getElementById('validationCard').style.display = 'none';
+        }
+
+        function saveOntology() {
+            const modal = new bootstrap.Modal(document.getElementById('saveVersionModal'));
+            modal.show();
+        }
+
+        function confirmSave() {
+            const content = aceEditor.getValue();
+            const commitMessage = document.getElementById('commitMessage').value.trim();
+            const extractEntities = document.getElementById('extractEntitiesCheck').checked;
+
+            if (!commitMessage) {
+                alert('Please enter a commit message');
+                return;
+            }
+
+            document.getElementById('confirmSaveBtn').disabled = true;
+            document.getElementById('confirmSaveBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving...';
+
+            fetch(`/editor/ontology/${currentOntologyId}/save`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    content: content,
+                    commit_message: commitMessage,
+                    extract_entities: extractEntities
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        hasUnsavedChanges = false;
+                        updateSaveButtonState();
+
+                        // Close modal and show success
+                        bootstrap.Modal.getInstance(document.getElementById('saveVersionModal')).hide();
+
+                        // Refresh page to show new version
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1000);
+
+                        // Show success message
+                        showAlert('success', 'Ontology saved successfully!');
+                    } else {
+                        alert('Save failed: ' + data.error);
+                        if (data.validation) {
+                            showValidationResults(data.validation);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Save error:', error);
+                    alert('Save failed: ' + error.message);
+                })
+                .finally(() => {
+                    document.getElementById('confirmSaveBtn').disabled = false;
+                    document.getElementById('confirmSaveBtn').innerHTML = '<i class="fas fa-save me-1"></i>Save Version';
+                });
+        }
+
+        function downloadTTL() {
+            const content = aceEditor.getValue();
+            const blob = new Blob([content], { type: 'text/turtle' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentOntologyId}.ttl`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function extractEntities() {
+            if (confirm('Extract entities from this ontology? This may take a moment.')) {
+                fetch(`/editor/api/extract-entities/${currentOntologyId}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showAlert('success', `Successfully extracted ${data.total_entities} entities`);
+                            // Update statistics
+                            updateStats(data.entity_counts);
+                        } else {
+                            alert('Error extracting entities: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        alert('Error extracting entities: ' + error.message);
+                    });
+            }
+        }
+
+        function formatTTL() {
+            // Simple TTL formatting - could be enhanced
+            const content = aceEditor.getValue();
+            const formatted = content.replace(/\s+/g, ' ').replace(/\s*\.\s*/g, ' .\n').replace(/\s*;\s*/g, ' ;\n    ');
+            aceEditor.setValue(formatted, -1);
+        }
+
+        function findReplace() {
+            aceEditor.execCommand('find');
+        }
+
+        function toggleWordWrap() {
+            const session = aceEditor.getSession();
+            session.setUseWrapMode(!session.getUseWrapMode());
+        }
+
+        function toggleTheme() {
+            const currentTheme = aceEditor.getTheme();
+            const newTheme = currentTheme.includes('monokai') ? 'ace/theme/github' : 'ace/theme/monokai';
+            aceEditor.setTheme(newTheme);
+        }
+
+        function showKeyboardShortcuts() {
+            const modal = new bootstrap.Modal(document.getElementById('shortcutsModal'));
+            modal.show();
+        }
+
+        function updateSaveButtonState() {
+            const saveBtn = document.getElementById('saveBtn');
+            if (hasUnsavedChanges) {
+                saveBtn.classList.remove('btn-success');
+                saveBtn.classList.add('btn-warning');
+                saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save*';
+            } else {
+                saveBtn.classList.remove('btn-warning');
+                saveBtn.classList.add('btn-success');
+                saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save';
+            }
+        }
+
+        function updateStats(entityCounts) {
+            if (entityCounts) {
+                document.getElementById('classCount').textContent = entityCounts.class || 0;
+                document.getElementById('propertyCount').textContent = entityCounts.property || 0;
+            }
+        }
+
+        function showAlert(type, message) {
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.parentNode.removeChild(alert);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+
+</html>
